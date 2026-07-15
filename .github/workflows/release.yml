@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    runs-on: macos-15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history + tags so the release-notes step can diff
+          # against the previous tag. Default shallow checkout sees only HEAD.
+          fetch-depth: 0
+
+      - name: Install create-dmg
+        run: npm install --global create-dmg
+
+      - name: Stage Sparkle private key
+        env:
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_ED_PRIVATE_KEY:-}" ]]; then
+            echo "::error::SPARKLE_ED_PRIVATE_KEY secret is not set — see docs/SPARKLE.md"
+            exit 1
+          fi
+          KEY_FILE="$RUNNER_TEMP/sparkle_ed_priv"
+          umask 077
+          printf '%s' "$SPARKLE_ED_PRIVATE_KEY" > "$KEY_FILE"
+          echo "SPARKLE_PRIVATE_KEY_PATH=$KEY_FILE" >> "$GITHUB_ENV"
+
+      - name: Build DMG + sign appcast
+        run: ./release.sh
+
+      - name: Compute checksum
+        id: sha
+        run: |
+          set -euo pipefail
+          DMG="dist/codexisland4custom-${GITHUB_REF_NAME#v}.dmg"
+          if [[ ! -f "$DMG" ]]; then
+            echo "::error::expected DMG not found at $DMG"
+            exit 1
+          fi
+          echo "sha=$(shasum -a 256 "$DMG" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      # Build release notes from Conventional Commits between the previous
+      # tag and HEAD. Groups by feat / fix / perf / refactor / docs / chore
+      # and drops the boilerplate `chore(release): bump VERSION` commit
+      # since it has no user-facing meaning. Falls back to a flat list if
+      # this is the first tag in the repo.
+      - name: Build release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          fetch_section() {
+            local pattern="$1"
+            git log "$RANGE" --no-merges --pretty=format:"%s|%h" \
+              | grep -E "$pattern" \
+              | grep -v 'chore(release): bump VERSION' \
+              || true
+          }
+          format_section() {
+            local heading="$1" pattern="$2" lines
+            lines=$(fetch_section "$pattern")
+            [ -z "$lines" ] && return
+            echo "### $heading"
+            echo
+            echo "$lines" | while IFS='|' read -r subj hash; do
+              echo "- ${subj} (\`${hash}\`)"
+            done
+            echo
+          }
+
+          PREV=$(git tag --sort=-v:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1 || true)
+          if [ -n "$PREV" ]; then
+            RANGE="${PREV}..HEAD"
+            COMPARE_URL="https://github.com/${GITHUB_REPOSITORY}/compare/${PREV}...${GITHUB_REF_NAME}"
+          else
+            RANGE="HEAD"
+            COMPARE_URL="https://github.com/${GITHUB_REPOSITORY}/commits/${GITHUB_REF_NAME}"
+          fi
+
+          {
+            echo "## What's changed"
+            echo
+            format_section "Features"          '^feat(\(|:)'
+            format_section "Fixes"             '^fix(\(|:)'
+            format_section "Performance"       '^perf(\(|:)'
+            format_section "Refactors"         '^refactor(\(|:)'
+            format_section "Docs"              '^docs(\(|:)'
+            format_section "Chores"            '^chore(\(|:)'
+            echo "**Full changelog:** ${COMPARE_URL}"
+            echo
+            echo "## Install"
+            echo
+            echo "Download the DMG from this release, drag codexisland4custom.app to /Applications, then remove quarantine if macOS blocks the unsigned app:"
+            echo
+            echo '```sh'
+            echo "xattr -dr com.apple.quarantine /Applications/codexisland4custom.app"
+            echo '```'
+            echo
+            echo "---"
+            echo
+            echo "**SHA-256:** \`${{ steps.sha.outputs.sha }}\`"
+            echo
+            echo "⚠️ Unsigned build — if macOS blocks the app, remove quarantine or use Open Anyway as described in the README."
+          } > release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/codexisland4custom-*.dmg
+            dist/appcast.xml
+          body_path: release_notes.md
