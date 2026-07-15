@@ -30,7 +30,7 @@ SPARKLE_FW="$SPARKLE_DIR/Sparkle.framework"
 # for CI). To rotate, see docs/SPARKLE.md — DO NOT change this lightly:
 # every existing install verifies updates against this exact public key, and
 # changing it strands them.
-SU_PUBLIC_KEY="bz1gwLBKgIL/Y7OO23o3gaMNIeTpvv/C90F9inr9Quo="
+SU_PUBLIC_KEY="NUo9C4m5oT8gO68neqe5gTxUMopk8sw6WM+lAyi5Y/A="
 
 SU_FEED_URL="${SU_FEED_URL:-https://github.com/shawn9960206-dotcom/codexisland4custom/releases/latest/download/appcast.xml}"
 

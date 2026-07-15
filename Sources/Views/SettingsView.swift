@@ -445,9 +445,12 @@ struct SettingsView: View {
             }
             SettingsRow(
                 title: "Check now",
-                subtitle: "Look for a new version immediately."
+                subtitle: updater.statusMessage ?? "Look for a new version immediately."
             ) {
-                PillButton(label: "Check") { updater.checkForUpdates() }
+                PillButton(
+                    label: updater.isChecking ? "Checking…" : "Check",
+                    isLoading: updater.isChecking
+                ) { updater.checkForUpdates() }
             }
         }
         .padding(.horizontal, 14)

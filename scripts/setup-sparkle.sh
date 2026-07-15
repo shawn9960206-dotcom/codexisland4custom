@@ -1,6 +1,6 @@
 #!/bin/bash
 # Downloads and unpacks the Sparkle framework + tools into Vendor/Sparkle.
-# Idempotent: does nothing if Vendor/Sparkle/Sparkle.framework already exists.
+# Idempotent: does nothing if Vendor/Sparkle has both the framework and tools.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 SPARKLE_VERSION="2.9.1"
 DEST="Vendor/Sparkle"
 
-if [[ -d "${DEST}/Sparkle.framework" ]]; then
+if [[ -d "${DEST}/Sparkle.framework" && -x "${DEST}/bin/sign_update" && -x "${DEST}/bin/generate_keys" ]]; then
   echo "Sparkle ${SPARKLE_VERSION} already vendored at ${DEST}"
   exit 0
 fi
